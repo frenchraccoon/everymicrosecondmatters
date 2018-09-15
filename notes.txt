@@ -1,0 +1,13 @@
+Shunting-yard algorithm (Dijkstra)
+https://en.wikipedia.org/wiki/Shunting-yard_algorithm
+
+System V Application Binary Interface, AMD64 Architecture Processor Supplement
+https://software.intel.com/sites/default/files/article/402129/mpx-linux64-abi.pdf
+
+Overview of x64 Calling Conventions (Windows)
+https://msdn.microsoft.com/en-us/library/ms235286.aspx
+
+Agner Fog's Lists of instruction latencies, throughputs and micro-operation breakdowns for Intel, AMD 
+and VIA CPUs
+https://www.agner.org/optimize/instruction_tables.pdf
+
