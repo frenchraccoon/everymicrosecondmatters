@@ -73,19 +73,17 @@ public:
   // Operations ========================================
 
   // RET; return from function
-  inline jit_function& ret() {
+  inline void ret() {
     code.push_back(0xc3);  // ret
-    return *this;
   }
   
   // clear return register
-  inline jit_function& zero() {
+  inline void zero() {
     code.insert(code.end(), { 0x31, 0xc0 });  // xor    %eax,%eax
-    return *this;
   }
 
   // move a specific value to a given register
-  inline jit_function& move(enum registers dest, uint32_t number) {
+  inline void move(enum registers dest, uint32_t number) {
     assert(dest != REGISTER_MAX_);
 
     const unsigned char* number_bytes = reinterpret_cast<unsigned char*>(&number);
@@ -96,16 +94,15 @@ public:
 
     code.insert(code.end(), { opcode0, 0xc7, opcode2,
                 number_bytes[0], number_bytes[1], number_bytes[2], number_bytes[3] });  // mov    $0xXXXXXXXX,%YYY
-    return *this;
   }
  
   // move a specific value to return register
-  inline jit_function& move(uint32_t number) {
+  inline void move(uint32_t number) {
     return move(REGISTER_RAX, number);
   }
   
   // move a specific variable to return register
-  inline jit_function& move_variable(enum registers dest, uint32_t index) {
+  inline void move_variable(enum registers dest, uint32_t index) {
     assert(dest != REGISTER_MAX_);
 
     // displacment in bytes
@@ -119,16 +116,15 @@ public:
     
     code.insert(code.end(), { opcode0, 0x8b, opcode2,
                 number_bytes[0], number_bytes[1], number_bytes[2], number_bytes[3] });  // mov    0xXXXXXXXX(%rdi),%YYY
-    return *this;
   }
   
   // move a specific variable to return register
-  inline jit_function& move_variable(uint32_t index) {
+  inline void move_variable(uint32_t index) {
     return move_variable(REGISTER_RAX, index);
   }
 
   // move a specific register to another register
-  inline jit_function& move(enum registers dest, enum registers src) {
+  inline void move(enum registers dest, enum registers src) {
     assert(dest != REGISTER_MAX_);
     assert(src != REGISTER_MAX_);
 
@@ -139,11 +135,10 @@ public:
     const unsigned char opcode2 = 0xc0 + ( dest % 8 ) + ( src % 8 )*8;
 
     code.insert(code.end(), { opcode0, 0x89, opcode2 });  // mov    %rXXX,%rYYY
-    return *this;
   }
   
   // add an integer to a given register
-  inline jit_function& add(enum registers dest, uint32_t number) {
+  inline void add(enum registers dest, uint32_t number) {
     assert(dest != REGISTER_MAX_);
 
     const unsigned char* number_bytes = reinterpret_cast<unsigned char*>(&number);
@@ -154,11 +149,10 @@ public:
 
     code.insert(code.end(), { opcode0, 0x81, opcode2,
                 number_bytes[0], number_bytes[1], number_bytes[2], number_bytes[3] });  // add    $0xXXXXXXXX,%rYYY
-    return *this;
   }
 
   // add a register to a given register
-  inline jit_function& add_reg(enum registers dest, enum registers src) {
+  inline void add_reg(enum registers dest, enum registers src) {
     assert(dest != REGISTER_MAX_);
     assert(src != REGISTER_MAX_);
 
@@ -169,40 +163,37 @@ public:
     const unsigned char opcode2 = 0xc0 + ( dest % 8 ) + ( src % 8 )*8;
 
     code.insert(code.end(), { opcode0, 0x01, opcode2 });  // add    %rXXX,%rYYY
-    return *this;
   }
   
   // Register allocation functions ========================================
 
   // allocate a register
-  jit_function& new_reg(enum registers &ret) {
+  void new_reg(enum registers &ret) {
     size_t i;
     for(i = 0; volatile_registers[i] != REGISTER_MAX_; i++) {
       unsigned mask = 1 << volatile_registers[i];
       if ((allocated_regs & mask) == 0) {
         allocated_regs |= mask;
         ret = volatile_registers[i];
-        return *this;
+        return;
       }
     }
     abort();
     ret = REGISTER_MAX_;
-    return *this;
   }
   
   // release a register
-  jit_function& release_reg(enum registers &reg) {
+  void release_reg(enum registers &reg) {
     unsigned mask = 1 << reg;
     assert((allocated_regs & mask) != 0);
     allocated_regs &= ~mask;
     reg = REGISTER_MAX_;
-    return *this;
   }
   
   // mmap/mprotect handling ========================================
 
   // copy code to executable location
-  jit_function& build() {
+  void build() {
     if (bytecode == NULL) {
       // Allocate one anonymous page, rw
       bytecode = mmap(NULL, page_size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -217,18 +208,16 @@ public:
         abort();
       }
     }
-    return *this;
   }
   
   // clear mapped region and vector
-  jit_function& clear() {
+  void clear() {
     if (bytecode != NULL) {
       if (munmap(bytecode, page_size()) != 0) {
         abort();
       }
     }
     code.clear();
-    return *this;
   }
 
   // Final execution ========================================
@@ -253,7 +242,7 @@ private:
 private:
   // Forbidden foes
   jit_function(const jit_function&) = delete;
-  jit_function& operator=(const jit_function&) = delete;
+  void operator=(const jit_function&) = delete;
 
 // Members variables
 protected:
@@ -295,7 +284,7 @@ int main(int argc, char**const argv) {
   code.clear();
   code.zero();
   code.ret();
-  code.build();;
+  code.build();
 
   // Print result
   std::cout << "Result: " << code(variables) << "\n";
@@ -306,7 +295,7 @@ int main(int argc, char**const argv) {
   code.clear();
   code.move(12345678);
   code.ret();
-  code.build();;
+  code.build();
 #endif
 
 #if 0
