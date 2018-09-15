@@ -35,7 +35,7 @@ const uint64_t variables[VARIABLE_MAX_] = {
 };
 
 // x86-64 registers
-enum x86_registers {
+enum registers {
   REGISTER_RAX,
   REGISTER_RCX,
   REGISTER_RDX,
@@ -60,8 +60,8 @@ enum x86_registers {
 class jit_function {
 public:
   // Constructor
-  jit_function(const uint64_t *variables):
-  variables(variables), allocated_regs(0), bytecode(NULL), function(NULL)
+  jit_function():
+  allocated_regs(0), bytecode(NULL)
   {
   }
 
@@ -69,21 +69,23 @@ public:
   ~jit_function() {
     clear();
   }
+  
+  // Operations ========================================
 
   // RET; return from function
-  inline jit_function& x86_ret() {
+  inline jit_function& ret() {
     code.push_back(0xc3);  // ret
     return *this;
   }
   
   // clear return register
-  inline jit_function& x86_zero() {
+  inline jit_function& zero() {
     code.insert(code.end(), { 0x31, 0xc0 });  // xor    %eax,%eax
     return *this;
   }
 
   // move a specific value to a given register
-  inline jit_function& x86_move(enum x86_registers dest, uint32_t number) {
+  inline jit_function& move(enum registers dest, uint32_t number) {
     assert(dest != REGISTER_MAX_);
 
     const unsigned char* number_bytes = reinterpret_cast<unsigned char*>(&number);
@@ -98,12 +100,12 @@ public:
   }
  
   // move a specific value to return register
-  inline jit_function& x86_move(uint32_t number) {
-    return x86_move(REGISTER_RAX, number);
+  inline jit_function& move(uint32_t number) {
+    return move(REGISTER_RAX, number);
   }
   
   // move a specific variable to return register
-  inline jit_function& x86_move_variable(enum x86_registers dest, uint32_t index) {
+  inline jit_function& move_variable(enum registers dest, uint32_t index) {
     assert(dest != REGISTER_MAX_);
 
     // displacment in bytes
@@ -121,12 +123,12 @@ public:
   }
   
   // move a specific variable to return register
-  inline jit_function& x86_move_variable(uint32_t index) {
-    return x86_move_variable(REGISTER_RAX, index);
+  inline jit_function& move_variable(uint32_t index) {
+    return move_variable(REGISTER_RAX, index);
   }
 
   // move a specific register to another register
-  inline jit_function& x86_move(enum x86_registers dest, enum x86_registers src) {
+  inline jit_function& move(enum registers dest, enum registers src) {
     assert(dest != REGISTER_MAX_);
     assert(src != REGISTER_MAX_);
 
@@ -141,7 +143,7 @@ public:
   }
   
   // add an integer to a given register
-  inline jit_function& x86_add(enum x86_registers dest, uint32_t number) {
+  inline jit_function& add(enum registers dest, uint32_t number) {
     assert(dest != REGISTER_MAX_);
 
     const unsigned char* number_bytes = reinterpret_cast<unsigned char*>(&number);
@@ -156,7 +158,7 @@ public:
   }
 
   // add a register to a given register
-  inline jit_function& x86_add_reg(enum x86_registers dest, enum x86_registers src) {
+  inline jit_function& add_reg(enum registers dest, enum registers src) {
     assert(dest != REGISTER_MAX_);
     assert(src != REGISTER_MAX_);
 
@@ -169,9 +171,11 @@ public:
     code.insert(code.end(), { opcode0, 0x01, opcode2 });  // add    %rXXX,%rYYY
     return *this;
   }
+  
+  // Register allocation functions ========================================
 
   // allocate a register
-  jit_function& x86_new_reg(enum x86_registers &ret) {
+  jit_function& new_reg(enum registers &ret) {
     size_t i;
     for(i = 0; volatile_registers[i] != REGISTER_MAX_; i++) {
       unsigned mask = 1 << volatile_registers[i];
@@ -187,7 +191,7 @@ public:
   }
   
   // release a register
-  jit_function& x86_release_reg(enum x86_registers &reg) {
+  jit_function& release_reg(enum registers &reg) {
     unsigned mask = 1 << reg;
     assert((allocated_regs & mask) != 0);
     allocated_regs &= ~mask;
@@ -195,11 +199,7 @@ public:
     return *this;
   }
   
-  // execute
-  inline uint64_t operator ()() {
-    build();
-    return function(variables);
-  }
+  // mmap/mprotect handling ========================================
 
   // copy code to executable location
   jit_function& build() {
@@ -216,9 +216,6 @@ public:
       if (mprotect(bytecode, page_size(), PROT_READ | PROT_EXEC) != 0) {
         abort();
       }
-      
-      // We have our function, yay!
-      function = reinterpret_cast<uint64_t (*)(const uint64_t *vars)>(bytecode);
     }
     return *this;
   }
@@ -234,6 +231,14 @@ public:
     return *this;
   }
 
+  // Final execution ========================================
+
+  // execute
+  inline uint64_t operator ()(const uint64_t *const variables) {
+    build();
+    return function(variables);
+  }
+
 protected:
   static size_t page_size() {
     const long page = sysconf(_SC_PAGESIZE);
@@ -243,7 +248,7 @@ protected:
 
 private:
   // Volatile registers (NOT preserved across function calls)
-  static const enum x86_registers volatile_registers[];
+  static const enum registers volatile_registers[];
 
 private:
   // Forbidden foes
@@ -252,9 +257,6 @@ private:
 
 // Members variables
 protected:
-  // Variables array
-  const uint64_t *const variables;
-  
   // Allocated volatile registers
   unsigned allocated_regs;
   
@@ -262,12 +264,14 @@ protected:
   std::vector<unsigned char> code;
   
   // Protected (RX) code
+  union {
   void *bytecode;
   uint64_t (*function)(const uint64_t *vars);
+  };
 };
 
 // Volatile registers (NOT preserved across function calls)
-const enum x86_registers jit_function::volatile_registers[] = {
+const enum registers jit_function::volatile_registers[] = {
   REGISTER_RAX,     // return value
   REGISTER_RCX,
   REGISTER_RDX,
@@ -284,60 +288,60 @@ int main(int argc, char**const argv) {
   (void) argc;
   (void) argv;
 
-  jit_function code(variables);
+  jit_function code;
   
 #if 0
   // "return 0"
   code.clear();
-  code.x86_zero();
-  code.x86_ret();
+  code.zero();
+  code.ret();
   code.build();;
 
   // Print result
-  std::cout << "Result: " << code() << "\n";
+  std::cout << "Result: " << code(variables) << "\n";
 #endif
   
 #if 0
   // "return 12345678;"
   code.clear();
-  code.x86_move(12345678);
-  code.x86_ret();
+  code.move(12345678);
+  code.ret();
   code.build();;
 #endif
 
 #if 0
   // return vars[VARIABLE_THREE]+42 == 3+42 == 45
-  enum x86_registers tmp ;
+  enum registers tmp ;
   code.clear();
-  code.x86_new_reg(tmp);
-  code.x86_move_variable(tmp, VARIABLE_THREE);  // tmp = vars[VARIABLE_THREE] == 3
-  code.x86_add(tmp, 42);    // tmp += 2
-  code.x86_move(REGISTER_RAX, tmp);  // return = tmp
-  code.x86_release_reg(tmp);
-  code.x86_ret();                        // return
-  code.build();;
+  code.new_reg(tmp);
+  code.move_variable(tmp, VARIABLE_THREE);  // tmp = vars[VARIABLE_THREE] == 3
+  code.add(tmp, 42);    // tmp += 2
+  code.move(REGISTER_RAX, tmp);  // return = tmp
+  code.release_reg(tmp);
+  code.ret();                        // return
+  code.build();
 #endif
 
 #if 01
   // return vars[VARIABLE_THREE]+42+vars[VARIABLE_FOURTY_TWO] == 3+42+42 == 87
-  enum x86_registers tmp, tmp2;
+  enum registers tmp, tmp2;
   code.clear();
-  code.x86_new_reg(tmp);
-  code.x86_move_variable(tmp, VARIABLE_THREE);  // tmp = vars[VARIABLE_THREE] == 3
-  code.x86_add(tmp, 42);    // tmp += 2
-  code.x86_new_reg(tmp2);
-  code.x86_move_variable(tmp2, VARIABLE_FOURTY_TWO);  // tmp2 = var[VARIABLE_FOURTY_TWO] == 42
-  code.x86_add_reg(tmp, tmp2);  // tmp += tmp2
-  code.x86_release_reg(tmp2);
-  code.x86_move(REGISTER_RAX, tmp);  // return = tmp
-  code.x86_release_reg(tmp);
-  code.x86_ret();                        // return
-  code.build();;
+  code.new_reg(tmp);
+  code.move_variable(tmp, VARIABLE_THREE);  // tmp = vars[VARIABLE_THREE] == 3
+  code.add(tmp, 42);    // tmp += 2
+  code.new_reg(tmp2);
+  code.move_variable(tmp2, VARIABLE_FOURTY_TWO);  // tmp2 = var[VARIABLE_FOURTY_TWO] == 42
+  code.add_reg(tmp, tmp2);  // tmp += tmp2
+  code.release_reg(tmp2);
+  code.move(REGISTER_RAX, tmp);  // return = tmp
+  code.release_reg(tmp);
+  code.ret();                        // return
+  code.build();
 #endif
   
   // Print result
-  std::cout << "Result: " << code() << "\n";
-  std::cout << "Result: " << code() << "\n";
+  std::cout << "Result: " << code(variables) << "\n";
+  std::cout << "Result: " << code(variables) << "\n";
   
   return EXIT_SUCCESS;
 }
