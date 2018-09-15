@@ -72,8 +72,8 @@ public:
 
   // RET; return from function
   inline jit_function& x86_ret() {
-   code.push_back(0xc3);  // ret
-   return *this;
+    code.push_back(0xc3);  // ret
+    return *this;
   }
   
   // clear return register
@@ -84,6 +84,8 @@ public:
 
   // move a specific value to a given register
   inline jit_function& x86_move(enum x86_registers dest, uint32_t number) {
+    assert(dest != REGISTER_MAX_);
+
     const unsigned char* number_bytes = reinterpret_cast<unsigned char*>(&number);
     const bool extended_reg = dest >= REGISTER_R8;
 
@@ -102,6 +104,8 @@ public:
   
   // move a specific variable to return register
   inline jit_function& x86_move_variable(enum x86_registers dest, uint32_t index) {
+    assert(dest != REGISTER_MAX_);
+
     // displacment in bytes
     index *= sizeof(uint64_t);
   
@@ -110,7 +114,7 @@ public:
 
     const unsigned char opcode0 = 0x48 + (extended_reg ? 4 : 0);
     const unsigned char opcode2 = 0x87 + ( dest % 8 )*8;
-
+    
     code.insert(code.end(), { opcode0, 0x8b, opcode2,
                 number_bytes[0], number_bytes[1], number_bytes[2], number_bytes[3] });  // mov    0xXXXXXXXX(%rdi),%YYY
     return *this;
@@ -123,6 +127,9 @@ public:
 
   // move a specific register to another register
   inline jit_function& x86_move(enum x86_registers dest, enum x86_registers src) {
+    assert(dest != REGISTER_MAX_);
+    assert(src != REGISTER_MAX_);
+
     const bool dst_extended_reg = dest >= REGISTER_R8;
     const bool src_extended_reg = src >= REGISTER_R8;
 
@@ -135,6 +142,8 @@ public:
   
   // add an integer to a given register
   inline jit_function& x86_add(enum x86_registers dest, uint32_t number) {
+    assert(dest != REGISTER_MAX_);
+
     const unsigned char* number_bytes = reinterpret_cast<unsigned char*>(&number);
     const bool extended_reg = dest >= REGISTER_R8;
 
@@ -146,24 +155,44 @@ public:
     return *this;
   }
 
+  // add a register to a given register
+  inline jit_function& x86_add_reg(enum x86_registers dest, enum x86_registers src) {
+    assert(dest != REGISTER_MAX_);
+    assert(src != REGISTER_MAX_);
+
+    const bool dst_extended_reg = dest >= REGISTER_R8;
+    const bool src_extended_reg = src >= REGISTER_R8;
+
+    const unsigned char opcode0 = 0x48 + ( dst_extended_reg ? 1 : 0 ) + ( src_extended_reg ? 4 : 0 );
+    const unsigned char opcode2 = 0xc0 + ( dest % 8 ) + ( src % 8 )*8;
+
+    code.insert(code.end(), { opcode0, 0x01, opcode2 });  // add    %rXXX,%rYYY
+    return *this;
+  }
+
   // allocate a register
-  enum x86_registers x86_new_reg() {
+  jit_function& x86_new_reg(enum x86_registers &ret) {
     size_t i;
     for(i = 0; volatile_registers[i] != REGISTER_MAX_; i++) {
       unsigned mask = 1 << volatile_registers[i];
       if ((allocated_regs & mask) == 0) {
         allocated_regs |= mask;
-        return volatile_registers[i];
+        ret = volatile_registers[i];
+        return *this;
       }
     }
     abort();
+    ret = REGISTER_MAX_;
+    return *this;
   }
   
   // release a register
-  void x86_release_reg(enum x86_registers reg) {
+  jit_function& x86_release_reg(enum x86_registers &reg) {
     unsigned mask = 1 << reg;
     assert((allocated_regs & mask) != 0);
     allocated_regs &= ~mask;
+    reg = REGISTER_MAX_;
+    return *this;
   }
   
   // execute
@@ -172,14 +201,37 @@ public:
     return function(variables);
   }
 
+  // copy code to executable location
+  jit_function& build() {
+    if (bytecode == NULL) {
+      // Allocate one anonymous page, rw
+      bytecode = mmap(NULL, page_size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      assert(bytecode != MAP_FAILED);
+
+      // Copy
+      assert(code.size() < page_size());
+      memcpy(bytecode, &code[0], code.size());
+
+      // Protect r+x
+      if (mprotect(bytecode, page_size(), PROT_READ | PROT_EXEC) != 0) {
+        abort();
+      }
+      
+      // We have our function, yay!
+      function = reinterpret_cast<uint64_t (*)(const uint64_t *vars)>(bytecode);
+    }
+    return *this;
+  }
+  
   // clear mapped region and vector
-  void clear() {
+  jit_function& clear() {
     if (bytecode != NULL) {
       if (munmap(bytecode, page_size()) != 0) {
         abort();
       }
     }
     code.clear();
+    return *this;
   }
 
 protected:
@@ -189,26 +241,6 @@ protected:
     return (size_t) page;
   }
 
-protected:
-  void build() {
-    if (bytecode == NULL) {
-      // Allocate one anonymous page, rw
-      bytecode = mmap(NULL, page_size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-      assert(bytecode != MAP_FAILED);
-
-      // Copy
-      memcpy(bytecode, &code[0], code.size());
-    
-      // Protect r+x
-      if (mprotect(bytecode, page_size(), PROT_READ | PROT_EXEC) != 0) {
-        abort();
-      }
-      
-      // We have our function, yay!
-      function = reinterpret_cast<uint64_t (*)(const uint64_t *vars)>(bytecode);
-    }
-  }
-  
 private:
   // Volatile registers (NOT preserved across function calls)
   static const enum x86_registers volatile_registers[];
@@ -254,21 +286,57 @@ int main(int argc, char**const argv) {
 
   jit_function code(variables);
   
+#if 0
   // "return 0"
-  //code.x86_zero().x86_ret();
+  code.clear();
+  code.x86_zero();
+  code.x86_ret();
+  code.build();;
+
+  // Print result
+  std::cout << "Result: " << code() << "\n";
+#endif
   
+#if 0
   // "return 12345678;"
-  //code.x86_move(12345678).x86_ret();
-  
+  code.clear();
+  code.x86_move(12345678);
+  code.x86_ret();
+  code.build();;
+#endif
+
+#if 0
   // return vars[VARIABLE_THREE]+42 == 3+42 == 45
-  enum x86_registers tmp = code.x86_new_reg();
-  code.x86_move_variable(tmp, VARIABLE_THREE);  // tmp = 42
+  enum x86_registers tmp ;
+  code.clear();
+  code.x86_new_reg(tmp);
+  code.x86_move_variable(tmp, VARIABLE_THREE);  // tmp = vars[VARIABLE_THREE] == 3
   code.x86_add(tmp, 42);    // tmp += 2
   code.x86_move(REGISTER_RAX, tmp);  // return = tmp
   code.x86_release_reg(tmp);
   code.x86_ret();                        // return
+  code.build();;
+#endif
+
+#if 01
+  // return vars[VARIABLE_THREE]+42+vars[VARIABLE_FOURTY_TWO] == 3+42+42 == 87
+  enum x86_registers tmp, tmp2;
+  code.clear();
+  code.x86_new_reg(tmp);
+  code.x86_move_variable(tmp, VARIABLE_THREE);  // tmp = vars[VARIABLE_THREE] == 3
+  code.x86_add(tmp, 42);    // tmp += 2
+  code.x86_new_reg(tmp2);
+  code.x86_move_variable(tmp2, VARIABLE_FOURTY_TWO);  // tmp2 = var[VARIABLE_FOURTY_TWO] == 42
+  code.x86_add_reg(tmp, tmp2);  // tmp += tmp2
+  code.x86_release_reg(tmp2);
+  code.x86_move(REGISTER_RAX, tmp);  // return = tmp
+  code.x86_release_reg(tmp);
+  code.x86_ret();                        // return
+  code.build();;
+#endif
   
   // Print result
+  std::cout << "Result: " << code() << "\n";
   std::cout << "Result: " << code() << "\n";
   
   return EXIT_SUCCESS;

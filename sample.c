@@ -24,12 +24,12 @@ unsigned long int test(unsigned long int *vars) {
     "mov    $0x1234,%r8\n"
     "mov    $0x1234,%r15\n"
 
-    "mov    0x1234(%rdi),%rax\n"
-    "mov    0x1234(%rdi),%rcx\n"
-    "mov    0x1234(%rdi),%rdx\n"
-    "mov    0x1234(%rdi),%rdi\n"
-    "mov    0x1234(%rdi),%r8\n"
-    "mov    0x1234(%rdi),%r15\n"
+    "mov    0x12345678(%rdi),%rax\n"
+    "mov    0x12345678(%rdi),%rcx\n"
+    "mov    0x12345678(%rdi),%rdx\n"
+    "mov    0x12345678(%rdi),%rdi\n"
+    "mov    0x12345678(%rdi),%r8\n"
+    "mov    0x12345678(%rdi),%r15\n"
 
     "mov    %rax, %rax\n"
     "mov    %rax, %rcx\n"
@@ -46,6 +46,20 @@ unsigned long int test(unsigned long int *vars) {
     "mov    %r15, %rax\n"
 
     "mov    %r15, %r15\n"
+
+    "add    %rax, %rax\n"
+    "add    %rcx, %rax\n"
+    "add    %rdx, %rax\n"
+    "add    %rdi, %rax\n"
+    "add    %r8, %rax\n"
+    "add    %r15, %rax\n"
+
+    "add    %rax, %rax\n"
+    "add    %rax, %rcx\n"
+    "add    %rax, %rdx\n"
+    "add    %rax, %rdi\n"
+    "add    %rax, %r8\n"
+    "add    %rax, %r15\n"
 
     "add    $0x1234,%rax\n"
     "add    $0x1234,%rcx\n"
