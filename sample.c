@@ -3,8 +3,15 @@
 extern unsigned long int test(unsigned long int *vars);
 
 #if 0
+unsigned long int test(unsigned long int *vars) {
+  return vars[42] + 42;
+  //return vars[0]*(vars[1]+vars[2]+1);
+}
+#endif
+
+#if 0
 unsigned long int test(void) {
-  // return 0;
+  //return 0;
   return 42;
 }
 #endif

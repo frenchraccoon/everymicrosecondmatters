@@ -13,6 +13,7 @@ CXX ?= g++
 # -Werror removed due to potentially unknown false positives (such as GCC 7.x related)
 COMMON_CFLAGS := \
 	-D_FORTIFY_SOURCE=2 \
+	-D_DEFAULT_SOURCE \
 	-march=native \
 	-pipe \
 	-O3 \
@@ -121,6 +122,9 @@ cleanobjs:
 build: jitdemo
 
 jitdemo: jitdemo.o
+	$(CC) -o $@ $^ -pie $(CXXFLAGS) $(LDFLAGS) $(EXECFLAGS) $(LIBS)
+
+poc: poc.o
 	$(CC) -o $@ $^ -pie $(CXXFLAGS) $(LDFLAGS) $(EXECFLAGS) $(LIBS)
 
 sample: sample.so
